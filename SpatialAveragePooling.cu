@@ -1,7 +1,7 @@
 #include "utils.h"
 #include "common.h"
 
-template <typename Dtype>
+template <typename Dtype, bool COUNT_INCLUDE_PAD>
 __global__ void AvePoolForward(const int nthreads,
     const Dtype* const bottom_data, const int num, const int channels,
     const int height, const int width, const int pooled_height,
@@ -29,7 +29,10 @@ __global__ void AvePoolForward(const int nthreads,
         aveval += bottom_slice[h * width + w];
       }
     }
-    top_data[index] = aveval / pool_size;
+    if(COUNT_INCLUDE_PAD)
+      top_data[index] = aveval / ((hend - hstart) * (wend - wstart));
+    else
+      top_data[index] = aveval / pool_size;
   }
 }
 
@@ -45,6 +48,7 @@ static int cunn_SpatialAveragePooling_updateOutput(lua_State *L)
   int padW = luaT_getfieldcheckint(L, 1, "padW");
   int padH = luaT_getfieldcheckint(L, 1, "padH");
   bool ceil_mode = luaT_getfieldcheckboolean(L, 1, "ceil_mode");
+  bool count_include_pad = luaT_getfieldcheckboolean(L, 1, "count_include_pad");
 
   THCudaTensor *output = (THCudaTensor *)luaT_getfieldcheckudata(L, 1, "output", "torch.CudaTensor");
 
@@ -89,10 +93,18 @@ static int cunn_SpatialAveragePooling_updateOutput(lua_State *L)
 
   int count = THCudaTensor_nElement(state, output);
 
-  AvePoolForward<<< GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>>(
-      count, input_data,
-      batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
-      kH, kW, dH, dW, padH, padW, output_data);
+  if(count_include_pad)
+    AvePoolForward<float, true>
+      <<<GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>>(
+        count, input_data,
+        batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
+        kH, kW, dH, dW, padH, padW, output_data);
+  else
+    AvePoolForward<float, false>
+      <<<GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>>(
+        count, input_data,
+        batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
+        kH, kW, dH, dW, padH, padW, output_data);
 
   if(input->nDimension == 3)
     THCudaTensor_resize3d(state, output, nInputPlane, nOutputRows, nOutputCols);
@@ -108,7 +120,7 @@ static int cunn_SpatialAveragePooling_updateOutput(lua_State *L)
   return 1;
 }
 
-template <typename Dtype>
+template <typename Dtype, bool COUNT_INCLUDE_PAD>
 __global__ void AvePoolBackward(const int nthreads, const Dtype* const top_diff,
     const int num, const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
@@ -137,7 +149,10 @@ __global__ void AvePoolBackward(const int nthreads, const Dtype* const top_diff,
         int hend = min(hstart + kernel_h, height + pad_h);
         int wend = min(wstart + kernel_w, width + pad_w);
         int pool_size = (hend - hstart) * (wend - wstart);
-        gradient += top_diff_slice[ph * pooled_width + pw] / pool_size;
+        if(COUNT_INCLUDE_PAD)
+          gradient += top_diff_slice[ph * pooled_width + pw] / ((hend - hstart) * (wend - wstart));
+        else
+          gradient += top_diff_slice[ph * pooled_width + pw] / pool_size;
       }
     }
     bottom_diff[index] = gradient;
@@ -156,6 +171,7 @@ static int cunn_SpatialAveragePooling_updateGradInput(lua_State *L)
   int padW = luaT_getfieldcheckint(L, 1, "padW");
   int padH = luaT_getfieldcheckint(L, 1, "padH");
   bool ceil_mode = luaT_getfieldcheckboolean(L, 1, "ceil_mode");
+  bool count_include_pad = luaT_getfieldcheckboolean(L, 1, "count_include_pad");
 
   THCudaTensor *gradInput = (THCudaTensor *)luaT_getfieldcheckudata(L, 1, "gradInput", "torch.CudaTensor");
 
@@ -196,12 +212,22 @@ static int cunn_SpatialAveragePooling_updateGradInput(lua_State *L)
   
   int count = THCudaTensor_nElement(state, input);
 
-  AvePoolBackward <<< GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>> 
-      (count,
-      THCudaTensor_data(state, gradOutput),
-      batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
-      kH, kW, dH, dW, padH, padW,
-      THCudaTensor_data(state, gradInput));
+  if(count_include_pad)
+    AvePoolBackward<float, true>
+      <<< GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>> 
+        (count,
+        THCudaTensor_data(state, gradOutput),
+        batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
+        kH, kW, dH, dW, padH, padW,
+        THCudaTensor_data(state, gradInput));
+  else
+    AvePoolBackward<float, false>
+      <<< GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>> 
+        (count,
+        THCudaTensor_data(state, gradOutput),
+        batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
+        kH, kW, dH, dW, padH, padW,
+        THCudaTensor_data(state, gradInput));
 
   THCudaTensor_free(state, gradOutput);
 
