@@ -30,7 +30,7 @@ __global__ void AvePoolForward(const int nthreads,
       }
     }
     if(COUNT_INCLUDE_PAD)
-      top_data[index] = aveval / ((hend - hstart) * (wend - wstart));
+      top_data[index] = aveval / (kernel_w * kernel_h);
     else
       top_data[index] = aveval / pool_size;
   }
@@ -150,7 +150,7 @@ __global__ void AvePoolBackward(const int nthreads, const Dtype* const top_diff,
         int wend = min(wstart + kernel_w, width + pad_w);
         int pool_size = (hend - hstart) * (wend - wstart);
         if(COUNT_INCLUDE_PAD)
-          gradient += top_diff_slice[ph * pooled_width + pw] / ((hend - hstart) * (wend - wstart));
+          gradient += top_diff_slice[ph * pooled_width + pw] / (kernel_w * kernel_h);
         else
           gradient += top_diff_slice[ph * pooled_width + pw] / pool_size;
       }
