@@ -1,7 +1,7 @@
 #include "utils.h"
 #include "common.h"
 
-template <typename Dtype, bool COUNT_INCLUDE_PAD>
+template <typename Dtype, int COUNT_INCLUDE_PAD>
 __global__ void AvePoolForward(const int nthreads,
     const Dtype* const bottom_data, const int num, const int channels,
     const int height, const int width, const int pooled_height,
@@ -29,10 +29,11 @@ __global__ void AvePoolForward(const int nthreads,
         aveval += bottom_slice[h * width + w];
       }
     }
-    if(COUNT_INCLUDE_PAD)
+    if(COUNT_INCLUDE_PAD) {
       top_data[index] = aveval / ((hend - hstart) * (wend - wstart));
-    else
+    } else {
       top_data[index] = aveval / pool_size;
+    }
   }
 }
 
@@ -93,18 +94,21 @@ static int cunn_SpatialAveragePooling_updateOutput(lua_State *L)
 
   int count = THCudaTensor_nElement(state, output);
 
-  if(count_include_pad)
-    AvePoolForward<float, true>
+  if(count_include_pad) {
+    std::cout << "using include pad 1" << std::endl;
+    AvePoolForward<float, 1>
       <<<GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>>(
         count, input_data,
         batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
         kH, kW, dH, dW, padH, padW, output_data);
-  else
-    AvePoolForward<float, false>
+  } else {
+    std::cout << "using include pad 0" << std::endl;
+    AvePoolForward<float, 0>
       <<<GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>>(
         count, input_data,
         batchSize, nInputPlane, nInputRows, nInputCols, nOutputRows, nOutputCols,
         kH, kW, dH, dW, padH, padW, output_data);
+  }
 
   if(input->nDimension == 3)
     THCudaTensor_resize3d(state, output, nInputPlane, nOutputRows, nOutputCols);
@@ -120,7 +124,7 @@ static int cunn_SpatialAveragePooling_updateOutput(lua_State *L)
   return 1;
 }
 
-template <typename Dtype, bool COUNT_INCLUDE_PAD>
+template <typename Dtype, int COUNT_INCLUDE_PAD>
 __global__ void AvePoolBackward(const int nthreads, const Dtype* const top_diff,
     const int num, const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
@@ -213,7 +217,7 @@ static int cunn_SpatialAveragePooling_updateGradInput(lua_State *L)
   int count = THCudaTensor_nElement(state, input);
 
   if(count_include_pad)
-    AvePoolBackward<float, true>
+    AvePoolBackward<float, 1>
       <<< GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>> 
         (count,
         THCudaTensor_data(state, gradOutput),
@@ -221,7 +225,7 @@ static int cunn_SpatialAveragePooling_updateGradInput(lua_State *L)
         kH, kW, dH, dW, padH, padW,
         THCudaTensor_data(state, gradInput));
   else
-    AvePoolBackward<float, false>
+    AvePoolBackward<float, 0>
       <<< GET_BLOCKS(count), CUDA_NUM_THREADS, 0, THCState_getCurrentStream(state) >>> 
         (count,
         THCudaTensor_data(state, gradOutput),

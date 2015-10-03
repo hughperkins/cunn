@@ -1727,8 +1727,8 @@ function cunntest.SpatialAveragePooling_includepad()
    local noinc_out = out_noinclude[1][1][1][1]
    local inc_out = out_include[1][1][1][1]
    mytester:assertne(noinc_out, inc_out)
-   mytester:asserteq(3, noinc_out)
-   mytester:asserteq(3/4, inc_out)
+   mytester:asserteq(noinc_out, 3)
+   mytester:asserteq(inc_out, 3/4)
 
    local _ = torch.setRNGState(rngState)
 end
