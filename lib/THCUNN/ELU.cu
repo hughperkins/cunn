@@ -32,7 +32,7 @@ struct ELUupdateOutputIP_functor
 void THNN_CudaELU_updateOutput(THCState *state, THCudaTensor *input, THCudaTensor *output,
   float alpha, bool inplace)
 {
-  THCUNN_assertSameGPU(state, 2, input, output);
+  THAssert(THCudaTensor_checkGPU(state, 2, input, output));
 
   if (inplace)
   {
@@ -77,7 +77,7 @@ struct ELUupdateGradInputIP_functor
 void THNN_CudaELU_updateGradInput(THCState *state, THCudaTensor *input, THCudaTensor *gradOutput,
   THCudaTensor *gradInput, THCudaTensor *output, float alpha, bool inplace)
 {
-  THNN_assertSameGPU(state, 3, output, gradOutput, gradInput);
+  THAssert(THCudaTensor_checkGPU(state, 3, output, gradOutput, gradInput));
 
   if (inplace)
   {
