@@ -77,7 +77,7 @@ struct ELUupdateGradInputIP_functor
 void THNN_CudaELU_updateGradInput(THCState *state, THCudaTensor *input, THCudaTensor *gradOutput,
   THCudaTensor *gradInput, THCudaTensor *output, float alpha, bool inplace)
 {
-  THCUNN_assertSameGPU(state, 3, output, gradOutput, gradInput);
+  THNN_assertSameGPU(state, 3, output, gradOutput, gradInput);
 
   if (inplace)
   {
